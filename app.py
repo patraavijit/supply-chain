@@ -21,7 +21,8 @@ uploaded_file = st.file_uploader("Upload your dataset (CSV)", type=["csv"])
 
 if uploaded_file is not None:
     try:
-        df = pd.read_csv(uploaded_file)
+        df = pd.read_csv(uploaded_file, encoding="latin1", nrows=5000)
+        df.columns = df.columns.str.strip()
     except UnicodeDecodeError:
         uploaded_file.seek(0)
         df = pd.read_csv(uploaded_file, encoding="latin1")
