@@ -1,97 +1,100 @@
 import streamlit as st
 import pandas as pd
-import numpy as np
 import matplotlib.pyplot as plt
 import seaborn as sns
 
-# -------------------------------
-# Page Config
-# -------------------------------
-st.set_page_config(page_title="Supply Chain Analysis", layout="wide")
+st.set_page_config(page_title="Supply Chain Dashboard", layout="wide")
 
-# -------------------------------
-# Title
-# -------------------------------
-st.title("📦 Supply Chain Analysis Dashboard")
+st.title("📦 Supply Chain Data Dashboard")
 
-# -------------------------------
-# File Upload
-# -------------------------------
-uploaded_file = st.file_uploader("Upload your dataset (CSV)", type=["csv"])
+uploaded_file = st.file_uploader("Upload CSV file", type=["csv"])
+
+@st.cache_data
+def load_data(file):
+    df = pd.read_csv(file, encoding="latin1", nrows=10000)
+    df.columns = df.columns.str.strip()
+    return df
 
 if uploaded_file is not None:
-    try:
-        df = pd.read_csv(uploaded_file, encoding="latin1", nrows=5000)
-        df.columns = df.columns.str.strip()
-    except UnicodeDecodeError:
-        uploaded_file.seek(0)
-        df = pd.read_csv(uploaded_file, encoding="latin1")
+    df = load_data(uploaded_file)
 
-    st.dataframe(df.head())
+    st.success("Dataset uploaded successfully!")
 
-    # -------------------------------
-    # Basic Info
-    # -------------------------------
-    st.subheader("📈 Dataset Overview")
-    col1, col2, col3 = st.columns(3)
-
-    col1.metric("Rows", df.shape[0])
-    col2.metric("Columns", df.shape[1])
-    col3.metric("Missing Values", df.isnull().sum().sum())
-
-    # -------------------------------
-    # Column Selection
-    # -------------------------------
     st.sidebar.header("⚙️ Controls")
 
-    numeric_cols = df.select_dtypes(include=np.number).columns.tolist()
+    numeric_cols = df.select_dtypes(include=["int64", "float64"]).columns.tolist()
 
     if numeric_cols:
-        selected_col = st.sidebar.selectbox("Select Numeric Column", numeric_cols)
+        selected_numeric = st.sidebar.selectbox(
+            "Select Numeric Column",
+            numeric_cols
+        )
+    else:
+        selected_numeric = None
+        st.sidebar.warning("No numeric columns found.")
 
-        # -------------------------------
-        # Distribution Plot
-        # -------------------------------
-        st.subheader(f"Distribution of {selected_col}")
-
-        fig, ax = plt.subplots()
-        sns.histplot(df[selected_col], kde=True, ax=ax)
-        st.pyplot(fig)
-
-        # -------------------------------
-        # Box Plot
-        # -------------------------------
-        st.subheader(f"Box Plot of {selected_col}")
-
-        fig2, ax2 = plt.subplots()
-        sns.boxplot(x=df[selected_col], ax=ax2)
-        st.pyplot(fig2)
-
-    # -------------------------------
-    # Correlation Heatmap
-    # -------------------------------
-    if len(numeric_cols) > 1:
-        st.subheader("🔗 Correlation Heatmap")
-
-        fig3, ax3 = plt.subplots(figsize=(10, 6))
-        sns.heatmap(df[numeric_cols].corr(), annot=True, cmap="viridis", ax=ax3)
-        st.pyplot(fig3)
-
-    # -------------------------------
-    # Filtering
-    # -------------------------------
     st.sidebar.subheader("🔍 Filter Data")
 
-    for col in df.columns:
-        if df[col].dtype == "object":
-            selected_values = st.sidebar.multiselect(
-                f"Filter {col}", df[col].unique()
-            )
-            if selected_values:
-                df = df[df[col].isin(selected_values)]
+    preferred_filters = [
+        "Type",
+        "Delivery Status",
+        "Category Name",
+        "Customer City",
+        "Customer Country",
+        "Customer Email",
+        "Customer Fname"
+    ]
 
-    st.subheader("📌 Filtered Data")
-    st.dataframe(df)
+    available_filters = [col for col in preferred_filters if col in df.columns]
+
+    if not available_filters:
+        available_filters = df.select_dtypes(include=["object"]).columns.tolist()[:7]
+
+    df_filtered = df.copy()
+
+    for col in available_filters:
+        unique_values = (
+            df_filtered[col]
+            .dropna()
+            .astype(str)
+            .unique()
+            .tolist()
+        )
+
+        unique_values = sorted(unique_values)[:300]
+
+        selected_values = st.sidebar.multiselect(
+            f"Filter {col}",
+            options=unique_values,
+            key=f"filter_{col}"
+        )
+
+        if selected_values:
+            df_filtered = df_filtered[
+                df_filtered[col].astype(str).isin(selected_values)
+            ]
+
+    st.subheader("📊 Dataset Preview")
+    st.write(f"Rows displayed: {df_filtered.shape[0]}")
+    st.dataframe(df_filtered.head(100))
+
+    col1, col2, col3 = st.columns(3)
+
+    col1.metric("Total Rows", df.shape[0])
+    col2.metric("Filtered Rows", df_filtered.shape[0])
+    col3.metric("Total Columns", df.shape[1])
+
+    if selected_numeric:
+        st.subheader(f"📈 Distribution of {selected_numeric}")
+
+        fig, ax = plt.subplots()
+        sns.histplot(df_filtered[selected_numeric].dropna(), kde=True, ax=ax)
+        ax.set_xlabel(selected_numeric)
+        ax.set_ylabel("Count")
+        st.pyplot(fig)
+
+    st.subheader("🧾 Columns Detected")
+    st.write(df.columns.tolist())
 
 else:
-    st.info("👆 Upload a CSV file to start analysis.")
+    st.info("Please upload a CSV file to begin.")
